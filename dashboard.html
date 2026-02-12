@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <title>NXP Robot – Custom Base + Ackermann</title>
 <style>
+  @font-face {
+    font-family: "Kode";
+    src: url("./Kode[wght].ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
   * {
     margin: 0;
     padding: 0;
@@ -13,8 +20,8 @@
   body {
     background: #0a0a0a;
     color: #fff;
-    font-family: 'Segoe UI', sans-serif;
-    padding: 20px;
+    font-family: 'Kode', 'Segoe UI', sans-serif;
+    padding: 10px;
     min-height: 100vh;
     overflow-y: hidden;
   }
@@ -77,8 +84,8 @@
   }
 
   #arrowCanvas {
-    width: 150px;
-    height: 150px;
+    width: 320px;
+    height: 200px;
   }
 
   .control-group {
@@ -182,6 +189,7 @@
     border-radius: 6px;
     padding: 10px 15px;
     cursor: pointer;
+    font-family: 'Kode', 'Segoe UI', sans-serif;
     font-weight: 600;
     font-size: 14px;
     transition: all 0.2s;
@@ -205,6 +213,7 @@
     color: #fff;
     border: 2px solid #444;
     border-radius: 6px;
+    font-family: 'Kode', 'Segoe UI', sans-serif;
     font-size: 14px;
     transition: all 0.2s;
   }
@@ -224,7 +233,7 @@
     height: 250px;
     background: #000;
     color: #0f0;
-    font-family: 'Courier New', monospace;
+    font-family: 'Kode', 'Segoe UI', sans-serif;
     padding: 12px;
     overflow-y: auto;
     border: 2px solid #444;
@@ -281,9 +290,9 @@
   <div class="right-panel section">
     <div class="controls-row">
       <div class="control-group">
-        <label>Rotation Indicator: (x0,y0) → (x1,y1)</label>
+        <label>Main Vector</label>
         <div style="display: flex; justify-content: center;">
-          <canvas id="arrowCanvas" width="150" height="150"></canvas>
+          <canvas id="arrowCanvas" width="320" height="200"></canvas>
         </div>
       </div>
 
