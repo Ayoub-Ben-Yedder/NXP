@@ -2,25 +2,59 @@
 #include <Servo.h>
 #include <Pixy2.h>
 #include <Encoder.h>
+// IDEAS: Change the data sent over Serial to be bytes instead of text for efficiency. Use a simple binary protocol with headers and checksums. This will reduce latency and increase reliability, especially at high speeds.
 
-#define IN1 9
-#define IN2 10
-#define IN3 11
-#define IN4 12
+// 0 not connected
+// 1 not connected
+#define ENC_LEFT_A   2
+#define ENC_LEFT_B   3
+#define ENC_RIGHT_A  4
+#define ENC_RIGHT_B  5
 
-#define TRIG 14
-#define ECHO 15
+#define IN1 6
+#define IN2 7
+#define IN3 8
+#define IN4 9
 
-#define STEER_SERVO     23
+/*
+SPI PINS, lel Camera Pixy
+10 CS
+11 MOSI
+12 MISO
+13 SCK
+*/
+
+#define LED 14
+
+// 15 not connected
+
+/*
+I2C Pins, lel Communication m3a allaho a3lem balek nest7a9oulhom
+SCL1 16
+SDA1 17
+*/
+
+// 18 not connected
+// 
+
+#define STEER_SERVO  19
+
+/*
+Serial5 Pins, lel Communication m3a el ESP32
+TX5 20
+RX5 21
+*/
+
+#define ECHO 22
+#define TRIG 23
+
+
+
 
 #define CENTER_ANGLE    90
 #define MAX_LEFT_ANGLE  0 
 #define MAX_RIGHT_ANGLE 180
 
-#define ENC_LEFT_A   4
-#define ENC_LEFT_B   5
-#define ENC_RIGHT_A  6
-#define ENC_RIGHT_B  7
 
 #define TICKS_PER_REV  360.0f
 #define WHEEL_DIAMETER 0.065f     // meters
@@ -57,6 +91,13 @@ unsigned long lastControlTime = 0;
 // ===== END PI SPEED CONTROL =====
 
 bool teleopMode = false;
+
+float ticksToMetersPerSecond(float ticksPerSecond)
+{
+  float revPerSec = ticksPerSecond / TICKS_PER_REV;
+  float wheelCirc = PI * WHEEL_DIAMETER;
+  return revPerSec * wheelCirc;
+}
 
 void initPixy(){
   pixy.init();
@@ -152,12 +193,6 @@ long readDistance()
   return distance;
 }
 
-float ticksToMetersPerSecond(float ticksPerSecond)
-{
-  float revPerSec = ticksPerSecond / TICKS_PER_REV;
-  float wheelCirc = PI * WHEEL_DIAMETER;
-  return revPerSec * wheelCirc;
-}
 
 void updateSpeed()
 {
