@@ -2,7 +2,6 @@
 #include <Servo.h>
 #include <Pixy2.h>
 #include <Encoder.h>
-// IDEAS: Change the data sent over Serial to be bytes instead of text for efficiency. Use a simple binary protocol with headers and checksums. This will reduce latency and increase reliability, especially at high speeds.
 
 // 0 not connected
 // 1 not connected
@@ -66,7 +65,7 @@ Pixy2 pixy;
 Encoder leftEncoder(ENC_LEFT_A, ENC_LEFT_B);
 Encoder rightEncoder(ENC_RIGHT_A, ENC_RIGHT_B);
 
-long lastLeftCount = 0; 
+long lastLeftCount = 0;
 long lastRightCount = 0;
 
 unsigned long lastSpeedTime = 0;
@@ -91,6 +90,42 @@ unsigned long lastControlTime = 0;
 // ===== END PI SPEED CONTROL =====
 
 bool teleopMode = false;
+
+static const uint8_t kStartByte = 0xAA;
+static const uint8_t kTypeInfo = 0x00;
+static const uint8_t kTypeSet = 0x01;
+
+static const uint8_t kIdSpeed = 0x00;
+static const uint8_t kIdSteer = 0x01;
+static const uint8_t kIdAuto = 0x02;
+static const uint8_t kIdVec = 0x03;
+
+static const uint8_t kMaxDataLen = 8;
+
+enum RxState : uint8_t {
+  RX_WAIT_START = 0,
+  RX_READ_TYPE,
+  RX_READ_ID,
+  RX_READ_LEN,
+  RX_READ_DATA,
+  RX_READ_CRC
+};
+
+static RxState rxState = RX_WAIT_START;
+static uint8_t rxType = 0;
+static uint8_t rxId = 0;
+static uint8_t rxLen = 0;
+static uint8_t rxData[kMaxDataLen];
+static uint8_t rxIndex = 0;
+static uint8_t rxCrc = 0;
+
+static uint8_t currentSteerAngle = CENTER_ANGLE;
+
+static uint8_t lastInfoSpeedR = 0;
+static uint8_t lastInfoSpeedL = 0;
+static uint8_t lastInfoSteer = CENTER_ANGLE;
+static uint8_t lastInfoAuto = 0xFF;
+static uint16_t lastVec[4] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
 
 float ticksToMetersPerSecond(float ticksPerSecond)
 {
@@ -151,6 +186,7 @@ void debugSpeed(){
 void steer(int angle){
   angle = constrain(angle, MAX_LEFT_ANGLE, MAX_RIGHT_ANGLE);
   steeringServo.write(angle);
+  currentSteerAngle = static_cast<uint8_t>(angle);
 }
 
 void run(int speedLeft, int speedRight)
@@ -263,65 +299,168 @@ void updatePI()
   lastControlTime = now;
 }
 
-void sendDebugSpeed() {
-  Serial1.print("SPD,");
-  Serial1.print(ticksToMetersPerSecond(leftSpeed), 3);
-  Serial1.print(",");
-  Serial1.print(leftPWM);
-  Serial1.print(",");
-  Serial1.print(ticksToMetersPerSecond(rightSpeed), 3);
-  Serial1.print(",");
-  Serial1.println(rightPWM);
+static uint8_t crc8(uint8_t type, uint8_t id, uint8_t len, const uint8_t *data) {
+  uint8_t crc = type ^ id ^ len;
+  for (uint8_t i = 0; i < len; ++i) {
+    crc ^= data[i];
+  }
+  return crc;
 }
 
-void sendDebugVectors() {
-  readAllVecs();
-  for (int i = 0; i < pixy.line.numVectors; i++) {
-    Serial1.print("VEC,");
-    Serial1.print(i);
-    Serial1.print(",");
-    Serial1.print(pixy.line.vectors[i].m_x0);
-    Serial1.print(",");
-    Serial1.print(pixy.line.vectors[i].m_y0);
-    Serial1.print(",");
-    Serial1.print(pixy.line.vectors[i].m_x1);
-    Serial1.print(",");
-    Serial1.println(pixy.line.vectors[i].m_y1);
+static void sendFrame(uint8_t type, uint8_t id, const uint8_t *data, uint8_t len) {
+  uint8_t crc = crc8(type, id, len, data);
+  Serial1.write(kStartByte);
+  Serial1.write(type);
+  Serial1.write(id);
+  Serial1.write(len);
+  for (uint8_t i = 0; i < len; ++i) {
+    Serial1.write(data[i]);
+  }
+  Serial1.write(crc);
+}
+
+static uint8_t clampPwmToByte(int value) {
+  if (value < 0) return 0;
+  if (value > 255) return 255;
+  return static_cast<uint8_t>(value);
+}
+
+static void sendInfoSpeed() {
+  uint8_t data[2];
+  data[0] = clampPwmToByte(static_cast<int>(rightPWM));
+  data[1] = clampPwmToByte(static_cast<int>(leftPWM));
+  sendFrame(kTypeInfo, kIdSpeed, data, 2);
+  lastInfoSpeedR = data[0];
+  lastInfoSpeedL = data[1];
+}
+
+static void sendInfoSteer() {
+  uint8_t data[1] = { currentSteerAngle };
+  sendFrame(kTypeInfo, kIdSteer, data, 1);
+  lastInfoSteer = currentSteerAngle;
+}
+
+static void sendInfoAuto() {
+  uint8_t data[1] = { static_cast<uint8_t>(teleopMode ? 0x00 : 0x01) };
+  sendFrame(kTypeInfo, kIdAuto, data, 1);
+  lastInfoAuto = data[0];
+}
+
+static void sendInfoVec(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+  uint8_t data[8];
+  data[0] = static_cast<uint8_t>(x0 & 0xFF);
+  data[1] = static_cast<uint8_t>((x0 >> 8) & 0xFF);
+  data[2] = static_cast<uint8_t>(y0 & 0xFF);
+  data[3] = static_cast<uint8_t>((y0 >> 8) & 0xFF);
+  data[4] = static_cast<uint8_t>(x1 & 0xFF);
+  data[5] = static_cast<uint8_t>((x1 >> 8) & 0xFF);
+  data[6] = static_cast<uint8_t>(y1 & 0xFF);
+  data[7] = static_cast<uint8_t>((y1 >> 8) & 0xFF);
+  sendFrame(kTypeInfo, kIdVec, data, 8);
+  lastVec[0] = x0;
+  lastVec[1] = y0;
+  lastVec[2] = x1;
+  lastVec[3] = y1;
+}
+
+static void handleSetFrame(uint8_t id, const uint8_t *data, uint8_t len) {
+  if (id == kIdSpeed && len == 2) {
+    uint8_t pwmR = data[0];
+    uint8_t pwmL = data[1];
+    rightPWM = pwmR;
+    leftPWM = pwmL;
+    run(static_cast<int>(leftPWM), static_cast<int>(rightPWM));
+  } else if (id == kIdSteer && len == 1) {
+    steer(static_cast<int>(data[0]));
+  } else if (id == kIdAuto && len == 1) {
+    teleopMode = (data[0] == 0x00);
+    leftIntegral = 0;
+    rightIntegral = 0;
+    if (teleopMode) {
+      run(0, 0);
+    }
   }
 }
 
-void sendDebugInfo(){
-  sendDebugSpeed(); 
-  sendDebugVectors();
+static void processRxByte(uint8_t byteIn) {
+  switch (rxState) {
+    case RX_WAIT_START:
+      if (byteIn == kStartByte) {
+        rxState = RX_READ_TYPE;
+      }
+      break;
+    case RX_READ_TYPE:
+      rxType = byteIn;
+      rxCrc = byteIn;
+      rxState = RX_READ_ID;
+      break;
+    case RX_READ_ID:
+      rxId = byteIn;
+      rxCrc ^= byteIn;
+      rxState = RX_READ_LEN;
+      break;
+    case RX_READ_LEN:
+      rxLen = byteIn;
+      rxCrc ^= byteIn;
+      if (rxLen > kMaxDataLen) {
+        rxState = RX_WAIT_START;
+      } else if (rxLen == 0) {
+        rxState = RX_READ_CRC;
+      } else {
+        rxIndex = 0;
+        rxState = RX_READ_DATA;
+      }
+      break;
+    case RX_READ_DATA:
+      rxData[rxIndex++] = byteIn;
+      rxCrc ^= byteIn;
+      if (rxIndex >= rxLen) {
+        rxState = RX_READ_CRC;
+      }
+      break;
+    case RX_READ_CRC:
+      if (rxCrc == byteIn && rxType == kTypeSet) {
+        handleSetFrame(rxId, rxData, rxLen);
+      }
+      rxState = RX_WAIT_START;
+      break;
+    default:
+      rxState = RX_WAIT_START;
+      break;
+  }
 }
 
-void handleTeleop() {
-  if (Serial1.available()) {
-    String cmd = Serial1.readStringUntil('\n');
-    cmd.trim(); // remove \r or spaces
+static void pollSerial() {
+  while (Serial1.available()) {
+    uint8_t byteIn = static_cast<uint8_t>(Serial1.read());
+    processRxByte(byteIn);
+  }
+}
 
-    if (cmd.startsWith("STOP")) {  // emergency stop
-      run(0, 0);
-      steer(CENTER_ANGLE);
-    } else if (cmd.startsWith("SPD")) {  
-      // Example: SPD,120,130
-      int comma1 = cmd.indexOf(',');
-      int comma2 = cmd.indexOf(',', comma1 + 1);
-      if (comma1 > 0 && comma2 > comma1) {
-        int leftPWM = cmd.substring(comma1 + 1, comma2).toInt();
-        int rightPWM = cmd.substring(comma2 + 1).toInt();
-        run(leftPWM, rightPWM);
-      }
-    } else if (cmd.startsWith("STEER")) {
-      // Example: STEER,90
-      int comma = cmd.indexOf(',');
-      if (comma > 0) {
-        int angle = cmd.substring(comma + 1).toInt();
-        steer(angle);
-      }
-    } else if (cmd.startsWith("AUTO")){
-      teleopMode = false;
-      leftIntegral = 0; rightIntegral = 0;
+static void sendInfoIfChanged() {
+  uint8_t speedR = clampPwmToByte(static_cast<int>(rightPWM));
+  uint8_t speedL = clampPwmToByte(static_cast<int>(leftPWM));
+  if (speedR != lastInfoSpeedR || speedL != lastInfoSpeedL) {
+    sendInfoSpeed();
+  }
+
+  if (currentSteerAngle != lastInfoSteer) {
+    sendInfoSteer();
+  }
+
+  uint8_t autoValue = static_cast<uint8_t>(teleopMode ? 0x00 : 0x01);
+  if (autoValue != lastInfoAuto) {
+    sendInfoAuto();
+  }
+
+  readMainVec();
+  if (pixy.line.numVectors > 0) {
+    uint16_t x0 = pixy.line.vectors[0].m_x0;
+    uint16_t y0 = pixy.line.vectors[0].m_y0;
+    uint16_t x1 = pixy.line.vectors[0].m_x1;
+    uint16_t y1 = pixy.line.vectors[0].m_y1;
+    if (x0 != lastVec[0] || y0 != lastVec[1] || x1 != lastVec[2] || y1 != lastVec[3]) {
+      sendInfoVec(x0, y0, x1, y1);
     }
   }
 }
@@ -344,32 +483,32 @@ void setup()
 
   Serial.begin(921600);
   Serial1.begin(921600);
+
+  sendInfoSpeed();
+  sendInfoSteer();
+  sendInfoAuto();
+  readMainVec();
+  if (pixy.line.numVectors > 0) {
+    sendInfoVec(pixy.line.vectors[0].m_x0,
+                pixy.line.vectors[0].m_y0,
+                pixy.line.vectors[0].m_x1,
+                pixy.line.vectors[0].m_y1);
+  }
 }
 
 void loop()
 {
-  // Check if ESP32 wants teleop mode
-  if (Serial1.available()) {
-    String startCmd = Serial1.readStringUntil('\n');
-    startCmd.trim();
-    if (startCmd == "TELEOP") {
-      teleopMode = true;
-      run(0,0);  // stop autonomous
-      leftIntegral = 0; rightIntegral = 0;
-    }
+  pollSerial();
+
+  updateSpeed();
+
+  if (!teleopMode) {
+    updatePI();
   }
 
-  if (teleopMode) {
-    handleTeleop();  // Teensy executes commands from ESP32
-  } else {
-    updateSpeed();
-    updatePI();
-    
-    // Optionally send debug info periodically
-    static unsigned long lastDebug = 0;
-    if (millis() - lastDebug > 100) {  // 10 Hz
-      sendDebugInfo();
-      lastDebug = millis();
-    }
+  static unsigned long lastInfoCheck = 0;
+  if (millis() - lastInfoCheck > 50) {
+    sendInfoIfChanged();
+    lastInfoCheck = millis();
   }
 }
