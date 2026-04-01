@@ -129,9 +129,23 @@ void setup()
   initPixy();
 
   digitalWrite(LED, HIGH);
-  run(0,0);
+  run(100,100);
+  //run(0,0);
 }
 
 void loop()
 {
+  pixy.line.getMainFeatures();
+  double angle = atan2(pixy.line.vectors[0].m_y1 - pixy.line.vectors[0].m_y0, pixy.line.vectors[0].m_x1 - pixy.line.vectors[0].m_x0) * 180.0 / PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  Serial.print("Angle: ");
+  Serial.println(angle);
+  if(angle<=50 && angle>=15){
+    int steering_angle = map(angle, 15, 50, CENTRE_ANGLE, MAX_RIGHT);
+    steer(steering_angle);
+  }else if(angle<15){
+    int steering_angle = map(angle, -70, 15, MAX_LEFT, CENTRE_ANGLE);
+    steer(steering_angle);
+  }
 }
