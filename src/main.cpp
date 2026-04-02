@@ -272,12 +272,32 @@ void loop()
   {
     float angle1 = computeAngle(vectors[0]);
     float angle2 = computeAngle(vectors[1]);
+    if ((abs(angle1 - angle2) > 70 && abs(angle1 - angle2) < 110) || (abs(angle1 - angle2) > 250 && abs(angle1 - angle2) < 290))
+    {
+      // kana fama angle 90 binet les deux vecteurs, bech nwaslou l goddam (most likely fama intersection)
+      steer(CENTRE_ANGLE);
+    }else{
     float avr_angle = (angle1 + angle2) / 2.0;
     Serial.printf("Angle1: %.2f, Angle2: %.2f, Average Angle: %.2f\n", angle1, angle2, avr_angle);
     steer(map(avr_angle, 200, 360, MAX_LEFT, MAX_RIGHT));
+    }
   }else{
     Serial.println("Not enough vectors detected, using the best one");
+    /*
+    Pas Testé: ===>
+    // Width = 316 pixels
+    // Height = 208 pixels
+    int nudge_a_little_baby = 10;
+    if(vectors[0].m_x0 < 316/2 || vectors[0].m_x1 < 316/2)
+    {
+      Serial.println("No valid vector detected, keeping previous steering angle");
+      steer(map(computeAngle(vectors[0]) + nudge_a_little_baby, 200, 360, MAX_LEFT, MAX_RIGHT));
+    }else{
+      steer(map(computeAngle(vectors[0]) - nudge_a_little_baby, 200, 360, MAX_LEFT, MAX_RIGHT));
+    }
+    */
     steer(map(computeAngle(vectors[0]), 200, 360, MAX_LEFT, MAX_RIGHT));
+
   }
   Serial.println("---------------------------------------------------------------");
 
