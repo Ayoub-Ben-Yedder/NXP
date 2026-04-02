@@ -170,9 +170,16 @@ void setup() {
   initPixy();
 
   digitalWrite(LED, HIGH);
+  
   run(0, 0);
 }
 
 void loop() {
-  communication_loop();
+  // communication_loop();
+  pixy.line.getAllFeatures();
+  for(uint8_t i = 0; i < pixy.line.numVectors; i++) {
+    Serial.printf("Vector %d: x0=%d y0=%d x1=%d y1=%d\n", i, pixy.line.vectors[i].m_x0, pixy.line.vectors[i].m_y0, pixy.line.vectors[i].m_x1, pixy.line.vectors[i].m_y1);
+  }
+  
+  delay(500);
 }
