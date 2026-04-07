@@ -33,7 +33,7 @@ constexpr uint8_t I2C_SLAVE_ADDR = 0x08;
 #define MAX_LEFT CENTRE_ANGLE - 45
 
 constexpr float PIXY_FORWARD_ANGLE = 270.0;
-constexpr float PIXY_STEER_DEADBAND = 10.0;
+constexpr float PIXY_STEER_DEADBAND = 15.0; // 10 old
 constexpr uint8_t STEERING_DELAY_CYCLES = 2; // parfait
 constexpr float STEERING_QUEUE_THRESHOLD = 2.0;
 constexpr float STEERING_CENTER_BIAS = 5.0;
@@ -54,15 +54,39 @@ volatile int i2c_speed_right = 0;
 volatile int i2c_steering_angle = CENTRE_ANGLE;
 volatile bool i2c_new_command = false;
 
-float readDistance()
+long readDistance()
 {
   digitalWrite(TRIG, LOW);
   delayMicroseconds(2);
+
   digitalWrite(TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG, LOW);
-  long duration = pulseIn(ECHO, HIGH);
-  return (duration * 0.0343) / 2;
+
+  long duration = pulseIn(ECHO, HIGH, 30000); // timeout 30ms
+  if (duration == 0)
+  {
+    return 999; // timeout, no object detected
+  }
+  long distance = duration * 0.034 / 2;       // cm
+
+  return distance;
+}
+
+long readDistanceFiltered()
+{
+  const int numReadings = 5;
+  long readings[numReadings];
+  long sum = 0;
+
+  for (int i = 0; i < numReadings; i++)
+  {
+    readings[i] = readDistance();
+    sum += readings[i];
+    delay(10);
+  }
+
+  return sum / numReadings;
 }
 
 void leftEncoderISR()
@@ -437,7 +461,7 @@ void firasLogic(){
   Vector vectors[MAX_VECTORS];
   uint8_t numVectors = 0;
   pixy.line.getAllFeatures();
-  //Serial.printf("Detected %d vectors\n", pixy.line.numVectors);
+  Serial.printf("Detected %d vectors\n", pixy.line.numVectors);
   for (uint8_t i = 0; i < pixy.line.numVectors; i++)
   {
     float angle = computeAngle(pixy.line.vectors[i]);
@@ -447,7 +471,15 @@ void firasLogic(){
     int x1 = pixy.line.vectors[i].m_x1;
     int y1 = pixy.line.vectors[i].m_y1;
     float avgY = (y0 + y1) / 2.0f;
+    //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n, isHorizontal=%s\n", i, angle, length, x0, y0, x1, y1, isHorizontalAngle(angle) ? "true" : "false");
 
+    /* FINISH LINE DETECTION (not working)
+    if(isHorizontalAngle(angle) && length < 15.0f){
+      Serial.printf("Finish Line Detected at %lu ms\n", millis());
+      digitalWrite(LED, LOW);
+      run(0,0);
+      delay(10000); // Delay for 10 second
+    }*/
     if (numVectors < MAX_VECTORS
         // Ignore vectors that are too short
         && length > MIN_VECTOR_LENGTH
@@ -469,12 +501,12 @@ void firasLogic(){
 
   if (numVectors == 0)
   {
-    Serial.println("No valid vectors, keeping previous steering angle");
+    //Serial.println("No valid vectors, keeping previous steering angle");
     targetSteering = lastSteeringAngle;
   }
   else if (numVectors == 1)
   {
-    Serial.println("Not enough vectors detected, using the best one"); 
+    //Serial.println("Not enough vectors detected, using the best one"); 
     targetSteering = computeSteeringAngle(vectors, numVectors);
   }
   else if (numVectors >= 2)
@@ -488,9 +520,10 @@ void firasLogic(){
     //Serial.printf("=========================================\nAngle between top 2 vectors: %.2f\n", angleBetweenVectors);
     if ((abs(angleBetweenVectors) > 70 && abs(angleBetweenVectors) < 110))
     {
-      digitalWrite(LED, LOW);
+      
       float avg_x = (vectors[0].m_x0 + vectors[0].m_x1 + vectors[1].m_x0 + vectors[1].m_x1) / 4.0f;
-      float correction_based_on_side = (avg_x < 40.0f) ? 15.0f : ((avg_x > 40.0f) ? -15.0f : 0.0f); // nal3bou 3la el valeur 15???
+      #define CROSS_CORRECTION_ANGLE 15.0f
+      float correction_based_on_side = (avg_x < 40.0f) ? CROSS_CORRECTION_ANGLE : ((avg_x > 40.0f) ? - CROSS_CORRECTION_ANGLE : 0.0f); // nal3bou 3la el valeur 15???
       targetSteering = CENTRE_ANGLE + correction_based_on_side;
       //Serial.printf("=========================================\nTwo main vectors with angles %.2f and %.2f, avg X: %.2f\n", angle1, angle2, avg_x);
     }
@@ -510,24 +543,38 @@ void firasLogic(){
   {
     pendingSteeringAngle = targetSteering;
     steeringDelayCounter = STEERING_DELAY_CYCLES;
-    Serial.printf("Queued new steering target %0.2f (delay %d)\n", pendingSteeringAngle, steeringDelayCounter);
+    //Serial.printf("Queued new steering target %0.2f (delay %d)\n", pendingSteeringAngle, steeringDelayCounter);
   }
 
   // decrement the delay if we have any
   if (steeringDelayCounter > 0)
   {
     steeringDelayCounter--;
-    Serial.printf("Delaying steering response, %d cycles left\n", steeringDelayCounter);
+    //Serial.printf("Delaying steering response, %d cycles left\n", steeringDelayCounter);
   }
 
   // if the delay has elapsed and we have a pending steering angle different from the last applied one, apply it
   if (steeringDelayCounter == 0 && pendingSteeringAngle != lastSteeringAngle)
   {
-    Serial.printf("Applying delayed steering %0.2f\n", pendingSteeringAngle);
+    //Serial.printf("Applying delayed steering %0.2f\n", pendingSteeringAngle);
     steer(pendingSteeringAngle);
     lastSteeringAngle = pendingSteeringAngle;
   }
   Serial.println("---------------------------------------------------------------");
+}
+
+
+void testingStopBox(){
+  // Stop distance need some tuning bech tji bel dhabt
+  #define STOP_DISTANCE 20
+  run(90, 90);
+  long distance = readDistanceFiltered();
+  Serial.printf("Distance: %ld\n", distance);
+  if(distance < STOP_DISTANCE){
+    run(0,0);
+    Serial.println("Object detected, stopping");
+    while(true);
+  }
 }
 
 void setup()
@@ -572,6 +619,7 @@ void setup()
 
 void loop()
 {
-  firasLogic();
+  //firasLogic();
   //findMaxXandMaxY();
+  testingStopBox();
 }
