@@ -6,6 +6,7 @@
 // CAMERA MAX X AND Y
 // Max X0: 78, Max Y0: 51, Max X1: 78, Max Y1: 51
 
+unsigned long startTime = 0;
 constexpr uint8_t I2C_SLAVE_ADDR = 0x08;
 
 #define MAX_VECTORS 20
@@ -440,7 +441,7 @@ void findMaxXandMaxY(){
 
 void testingStopBox(){
   // Stop distance need some tuning bech tji bel dhabt
-  #define STOP_DISTANCE 20
+  #define STOP_DISTANCE 30
   long distance = readDistanceFiltered();
   Serial.printf("Distance: %ld\n", distance);
   if(distance < STOP_DISTANCE){
@@ -491,7 +492,8 @@ void firasLogic(){
     //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
   }
   // FINISH LINE DETECTION (need some tuning) Second part
-  if(numHorizontalVectors >= 2 && !finishLineDetected){
+  unsigned long elapsedTime = millis() - startTime;
+  if(numHorizontalVectors >= 2 && !finishLineDetected && elapsedTime > 10000){
     sortVectorsByLength(horizontalVectors, numHorizontalVectors);
     float avgY_vec1 = (horizontalVectors[0].m_y0 + horizontalVectors[0].m_y1) / 2.0f;
     float avgY_vec2 = (horizontalVectors[1].m_y0 + horizontalVectors[1].m_y1) / 2.0f;
@@ -614,8 +616,8 @@ void setup()
   digitalWrite(LED, HIGH);
 
   run(150, 150);
+  startTime = millis();
 }
-
 void loop()
 {
   firasLogic();
