@@ -66,7 +66,8 @@ void rightEncoderISR()
 
 void initPixy()
 {
-  pixy.init();
+  int8_t res = pixy.init();
+  Serial.printf("Result of pixy.init() = %d", res);
   pixy.changeProg("line");
 }
 
@@ -238,7 +239,7 @@ void setup()
 
   digitalWrite(LED, HIGH);
 
-  run(150, 150);
+  run(100, 100);
 }
 
 void loop()
@@ -247,7 +248,9 @@ void loop()
   Vector vectors[MAX_VECTORS];
   uint8_t numVectors = 0;
   pixy.line.getAllFeatures();
+
   Serial.printf("Detected %d vectors\n", pixy.line.numVectors);
+
   for (uint8_t i = 0; i < pixy.line.numVectors; i++)
   {
     float angle = computeAngle(pixy.line.vectors[i]);
@@ -283,31 +286,8 @@ void loop()
     }
   }else{
     Serial.println("Not enough vectors detected, using the best one");
-    /*
-    Pas Testé: ===>
-    // Width = 316 pixels
-    // Height = 208 pixels
-    int nudge_a_little_baby = 10;
-    if(vectors[0].m_x0 < 316/2 || vectors[0].m_x1 < 316/2)
-    {
-      Serial.println("No valid vector detected, keeping previous steering angle");
-      steer(map(computeAngle(vectors[0]) + nudge_a_little_baby, 200, 360, MAX_LEFT, MAX_RIGHT));
-    }else{
-      steer(map(computeAngle(vectors[0]) - nudge_a_little_baby, 200, 360, MAX_LEFT, MAX_RIGHT));
-    }
-    */
     steer(map(computeAngle(vectors[0]), 200, 360, MAX_LEFT, MAX_RIGHT));
-
   }
   Serial.println("---------------------------------------------------------------");
-
-/*
-Raisonnment Zabkawoui:
-all vecs have weights
-weight = max y of the vector
-Somme [ vectors * weight ]  / somme of weights = Vecteur de raisonnement
-steering angle = angle of the vector de raisonnement
-*/
-
-  //delay(2000);
+  
 }
