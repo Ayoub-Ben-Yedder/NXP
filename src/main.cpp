@@ -3,6 +3,9 @@
 #include <Servo.h>
 #include <Wire.h>
 
+// CAMERA MAX X AND Y
+// Max X0: 78, Max Y0: 51, Max X1: 78, Max Y1: 51
+
 constexpr uint8_t I2C_SLAVE_ADDR = 0x08;
 
 #define MAX_VECTORS 20
@@ -570,4 +573,5 @@ void setup()
 void loop()
 {
   firasLogic();
+  //findMaxXandMaxY();
 }
