@@ -177,11 +177,11 @@ void communication_loop()
 float computeAngle(const Vector &vec)
 {
   float res = atan2(vec.m_y1 - vec.m_y0, vec.m_x1 - vec.m_x0) * 180.0 / PI;
-  while(res < 0)
+  while (res < 0)
   {
     res += 360;
   }
-  while(res >= 360)
+  while (res >= 360)
   {
     res -= 360;
   }
@@ -308,6 +308,47 @@ void sortVectorsByLength(Vector *vectors, uint8_t numVectors)
   }
 }
 
+void printSortedVectors(Vector *vectors, uint8_t numVectors)
+{
+  for (uint8_t i = 0; i < numVectors; i++)
+  {
+    float angle = computeAngle(vectors[i]);
+    float length = computeLength(vectors[i]);
+    int x0 = vectors[i].m_x0;
+    int y0 = vectors[i].m_y0;
+    int x1 = vectors[i].m_x1;
+    int y1 = vectors[i].m_y1;
+    Serial.printf("Sorted Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
+  }
+  Serial.println("---------------------------------------------------------------");
+}
+
+float applyCorrection(const Vector *vectors, uint8_t numVectors, float targetSteering)
+{
+ if (numVectors > 0)
+  {
+    float mainVectorCenterX = (vectors[0].m_x0 + vectors[0].m_x1) / 2.0f; // (x0+x1)/2 mte3 atwel vecteur
+    if (fabs(targetSteering - CENTRE_ANGLE) <= 10.0f && mainVectorCenterX >= 20.0f && mainVectorCenterX <= 60.0f)
+    {
+      float correction = 0.0f;
+      if (mainVectorCenterX >= 20.0f && mainVectorCenterX < 40.0f)
+      {
+        // Small turn to the right
+        correction = 15.0f;
+        Serial.printf("Small turn RIGHT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
+      }
+      else if (mainVectorCenterX >= 40.0f && mainVectorCenterX <= 60.0f)
+      {
+        // Small turn to the left
+        correction = -15.0f;
+        Serial.printf("Small turn LEFT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
+      }
+
+      targetSteering = constrain(targetSteering + correction, MAX_LEFT, MAX_RIGHT);
+    }
+  } 
+  return targetSteering;
+}
 void setup()
 {
   Serial.begin(115200);
@@ -338,8 +379,6 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENC_LEFT_A), leftEncoderISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC_RIGHT_A), rightEncoderISR, CHANGE);
 
-  // communication_setup();
-
   steer_servo.attach(SERVO_PIN);
   steer(CENTRE_ANGLE);
 
@@ -352,7 +391,6 @@ void setup()
 
 void loop()
 {
-  // communication_loop();
   Vector vectors[MAX_VECTORS];
   uint8_t numVectors = 0;
   pixy.line.getAllFeatures();
@@ -367,96 +405,56 @@ void loop()
     int y1 = pixy.line.vectors[i].m_y1;
     float avgY = (y0 + y1) / 2.0f;
 
-    if (numVectors < MAX_VECTORS && length > MIN_VECTOR_LENGTH && !isHorizontalAngle(angle) && !((avgY >= 0 && avgY <= 2) || (avgY >= 48 && avgY <= 50)))
+    if (numVectors < MAX_VECTORS
+        // Ignore vectors that are too short
+        && length > MIN_VECTOR_LENGTH
+        // Ignore vectors that are too horizontal
+        && !isHorizontalAngle(angle)
+        // Ignore vectors that are too close to the top or bottom of the frame
+        && !((avgY >= 0 && avgY <= 5) || (avgY >= 45 && avgY <= 50)))
     {
       vectors[numVectors] = pixy.line.vectors[i];
       numVectors++;
     }
-    else if (isHorizontalAngle(angle))
-    {
-      Serial.printf("Skipping horizontal vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
-    }
-    else if ((avgY >= 0 && avgY <= 2) || (avgY >= 48 && avgY <= 50))
-    {
-      Serial.printf("Ignoring vector in y-range %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
-    }
-    else
-    {
-      Serial.printf("Ignoring short vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
-    }
     Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
   }
-  
+  // Sort vectors by length in descending order
   sortVectorsByLength(vectors, numVectors);
-  for(int i = 0; i < numVectors; i++)
-  {
-    float angle = computeAngle(vectors[i]);
-    float length = computeLength(vectors[i]);
-    int x0 = vectors[i].m_x0;
-    int y0 = vectors[i].m_y0;
-    int x1 = vectors[i].m_x1;
-    int y1 = vectors[i].m_y1;
-    Serial.printf("Sorted Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
-  }
+  printSortedVectors(vectors, numVectors);
 
   float targetSteering = lastSteeringAngle;
-  float mainVectorCenterX = -1.0f;
 
-  if (numVectors >= 2)
+  if (numVectors == 0)
   {
-    float angle1 = computeAngle(vectors[0]);
-    float angle2 = computeAngle(vectors[1]);
-    if ((abs(angle1 - angle2) > 70 && abs(angle1 - angle2) < 110) || (abs(angle1 - angle2) > 250 && abs(angle1 - angle2) < 290))
-    {
-      // kana fama angle 90 binet les deux vecteurs, bech nwaslou l goddam (most likely fama intersection)
-      targetSteering = CENTRE_ANGLE;
-    }
-    else
-    {
-      targetSteering = computeSteeringAngle(vectors, numVectors);
-    }
+    Serial.println("No valid vectors, keeping previous steering angle");
+    targetSteering = lastSteeringAngle;
   }
   else if (numVectors == 1)
   {
     Serial.println("Not enough vectors detected, using the best one");
     targetSteering = computeSteeringAngle(vectors, numVectors);
   }
-  else
+  else if (numVectors >= 2)
   {
-    Serial.println("No valid vectors, keeping previous steering angle");
-    targetSteering = lastSteeringAngle;
-  }
-
-  if (numVectors > 0)
-  {
-    mainVectorCenterX = (vectors[0].m_x0 + vectors[0].m_x1) / 2.0f;
-    if (fabs(targetSteering - CENTRE_ANGLE) <= 10.0f && mainVectorCenterX >= 20.0f && mainVectorCenterX <= 60.0f)
+    float angle1 = computeAngle(vectors[0]);
+    float angle2 = computeAngle(vectors[1]);
+    // kana fama angle 90 binet les deux vecteurs, bech nwaslou l goddam (most likely fama intersection)
+    if ((abs(angle1 - angle2) > 70 && abs(angle1 - angle2) < 110) || (abs(angle1 - angle2) > 250 && abs(angle1 - angle2) < 290))
     {
-      float correction = 0.0f;
-      if (mainVectorCenterX >= 20.0f && mainVectorCenterX < 40.0f)
-      {
-        // Small turn to the right
-        correction = 15.0f;
-        Serial.printf("Small turn RIGHT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
-      }
-      else if (mainVectorCenterX >= 40.0f && mainVectorCenterX <= 60.0f)
-      {
-        // Small turn to the left
-        correction = -15.0f;
-        Serial.printf("Small turn LEFT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
-      }
-      
-      targetSteering = constrain(targetSteering + correction, MAX_LEFT, MAX_RIGHT);
-      Serial.printf("Center-steer correction: mainVectorCenterX=%.1f, correction=%.1f -> %.1f\n",
-                    mainVectorCenterX,
-                    correction,
-                    targetSteering);
+      targetSteering = CENTRE_ANGLE;
+    }
+    // mafamch intersection
+    else
+    {
+      targetSteering = computeSteeringAngle(vectors, numVectors);
     }
   }
 
+  targetSteering = applyCorrection(vectors, numVectors, targetSteering);
   targetSteering = biasSteeringTowardCenter(targetSteering);
   targetSteering = softenExtremeSteering(targetSteering);
 
+  // if the new target steering is significantly different from the last one, queue it
   if (fabs(targetSteering - pendingSteeringAngle) > STEERING_QUEUE_THRESHOLD)
   {
     pendingSteeringAngle = targetSteering;
@@ -464,12 +462,14 @@ void loop()
     Serial.printf("Queued new steering target %0.2f (delay %d)\n", pendingSteeringAngle, steeringDelayCounter);
   }
 
+  // decrement the delay if we have any
   if (steeringDelayCounter > 0)
   {
     steeringDelayCounter--;
     Serial.printf("Delaying steering response, %d cycles left\n", steeringDelayCounter);
   }
 
+  // if the delay has elapsed and we have a pending steering angle different from the last applied one, apply it
   if (steeringDelayCounter == 0 && pendingSteeringAngle != lastSteeringAngle)
   {
     Serial.printf("Applying delayed steering %0.2f\n", pendingSteeringAngle);
@@ -477,14 +477,4 @@ void loop()
     lastSteeringAngle = pendingSteeringAngle;
   }
   Serial.println("---------------------------------------------------------------");
-
-/*
-Raisonnment Zabkawoui:
-all vecs have weights
-weight = max y of the vector
-Somme [ vectors * weight ]  / somme of weights = Vecteur de raisonnement
-steering angle = angle of the vector de raisonnement
-*/
-
-  //delay(2000);
 }
