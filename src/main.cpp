@@ -63,10 +63,10 @@ long readDistance()
   delayMicroseconds(10);
   digitalWrite(TRIG, LOW);
 
-  long duration = pulseIn(ECHO, HIGH, 30000); // timeout 30ms
+  long duration = pulseIn(ECHO, HIGH, 5000); // timeout 5ms
   if (duration == 0)
   {
-    return 999; // timeout, no object detected
+    return 99; // timeout, no object detected
   }
   long distance = duration * 0.034 / 2;       // cm
 
@@ -75,7 +75,7 @@ long readDistance()
 
 long readDistanceFiltered()
 {
-  const int numReadings = 5;
+  const int numReadings = 3;
   long readings[numReadings];
   long sum = 0;
 
@@ -83,7 +83,7 @@ long readDistanceFiltered()
   {
     readings[i] = readDistance();
     sum += readings[i];
-    delay(10);
+    delay(1);
   }
 
   return sum / numReadings;
@@ -385,29 +385,6 @@ float applyCorrection(const Vector *vectors, uint8_t numVectors, float targetSte
       targetSteering = constrain(targetSteering + correction, MAX_LEFT, MAX_RIGHT);
     }
   }
-  /* }else if(numVectors >= 2){
-    float mainVector1CenterX = (vectors[0].m_x0 + vectors[0].m_x1) / 2.0f; // (x0+x1)/2 mte3 atwel vecteur
-    float mainVector2CenterX = (vectors[1].m_x0 + vectors[1].m_x1) / 2.0f; // (x0+x1)/2 mte3 thani atwel vecteur
-    float mainVectorCenterX = (mainVector1CenterX + mainVector2CenterX) / 2.0f; // average center X of the two longest vectors
-    if (fabs(targetSteering - CENTRE_ANGLE) <= 10.0f && mainVector1CenterX >= 20.0f && mainVector1CenterX <= 60.0f)
-    {
-      float correction = 0.0f;
-      if (mainVectorCenterX >= 20.0f && mainVectorCenterX < 40.0f)
-      {
-        // Small turn to the right
-        correction = 15.0f;
-        Serial.printf("Small turn RIGHT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
-      }
-      else if (mainVectorCenterX >= 40.0f && mainVectorCenterX <= 60.0f)
-      {
-        // Small turn to the left
-        correction = -15.0f;
-        Serial.printf("Small turn LEFT: mainVectorCenterX=%.1f\n", mainVectorCenterX);
-      }
-
-      targetSteering = constrain(targetSteering + correction, MAX_LEFT, MAX_RIGHT);
-    }
-  } */
   return targetSteering;
 }
 
@@ -420,10 +397,12 @@ Vector sumVector(const Vector &v1, const Vector &v2)
   result.m_y1 = v1.m_y1 + v2.m_y1;
   return result;
 }
+
 float dotProduct(const Vector &v1, const Vector &v2)
 {
   return (v1.m_x1 - v1.m_x0) * (v2.m_x1 - v2.m_x0) + (v1.m_y1 - v1.m_y0) * (v2.m_y1 - v2.m_y0);
 }
+
 float computeAngleBetweenVectors(const Vector &v1, const Vector &v2)
 {
   float mag1 = computeLength(v1);
@@ -457,9 +436,27 @@ void findMaxXandMaxY(){
   }
   Serial.printf("Max X0: %d, Max Y0: %d, Max X1: %d, Max Y1: %d\n", maxX0, maxY0, maxX1, maxY1);
 }
+
+
+void testingStopBox(){
+  // Stop distance need some tuning bech tji bel dhabt
+  #define STOP_DISTANCE 20
+  long distance = readDistanceFiltered();
+  Serial.printf("Distance: %ld\n", distance);
+  if(distance < STOP_DISTANCE){
+    run(0,0);
+    Serial.println("Object detected, stopping");
+    while(true);
+  }
+}
+
+bool finishLineDetected = false;
+
 void firasLogic(){
   Vector vectors[MAX_VECTORS];
   uint8_t numVectors = 0;
+  Vector horizontalVectors[MAX_VECTORS];
+  uint8_t numHorizontalVectors = 0;
   pixy.line.getAllFeatures();
   Serial.printf("Detected %d vectors\n", pixy.line.numVectors);
   for (uint8_t i = 0; i < pixy.line.numVectors; i++)
@@ -473,13 +470,13 @@ void firasLogic(){
     float avgY = (y0 + y1) / 2.0f;
     //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n, isHorizontal=%s\n", i, angle, length, x0, y0, x1, y1, isHorizontalAngle(angle) ? "true" : "false");
 
-    /* FINISH LINE DETECTION (not working)
+    // FINISH LINE DETECTION (need some tuning) First part
     if(isHorizontalAngle(angle) && length < 15.0f){
-      Serial.printf("Finish Line Detected at %lu ms\n", millis());
-      digitalWrite(LED, LOW);
-      run(0,0);
-      delay(10000); // Delay for 10 second
-    }*/
+      horizontalVectors[numHorizontalVectors] = pixy.line.vectors[i];
+      numHorizontalVectors++;
+      Serial.printf("Horizontal Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
+    }
+
     if (numVectors < MAX_VECTORS
         // Ignore vectors that are too short
         && length > MIN_VECTOR_LENGTH
@@ -493,6 +490,19 @@ void firasLogic(){
     }
     //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
   }
+  // FINISH LINE DETECTION (need some tuning) Second part
+  if(numHorizontalVectors >= 2 && !finishLineDetected){
+    sortVectorsByLength(horizontalVectors, numHorizontalVectors);
+    float avgY_vec1 = (horizontalVectors[0].m_y0 + horizontalVectors[0].m_y1) / 2.0f;
+    float avgY_vec2 = (horizontalVectors[1].m_y0 + horizontalVectors[1].m_y1) / 2.0f;
+    // if les Y mte3hom ykounou 9ribin mel baadhhom (within 5 pixels), n3etberou finish line detected, w nkamlo douga douga
+    if(fabs(avgY_vec1 - avgY_vec2) <= 5.0f){
+      Serial.println("Finish line detected!");
+      run(130,130);
+      finishLineDetected = true;
+    }
+  }
+
   // Sort vectors by length in descending order
   sortVectorsByLength(vectors, numVectors);
   //printSortedVectors(vectors, numVectors);
@@ -520,7 +530,6 @@ void firasLogic(){
     //Serial.printf("=========================================\nAngle between top 2 vectors: %.2f\n", angleBetweenVectors);
     if ((abs(angleBetweenVectors) > 70 && abs(angleBetweenVectors) < 110))
     {
-      
       float avg_x = (vectors[0].m_x0 + vectors[0].m_x1 + vectors[1].m_x0 + vectors[1].m_x1) / 4.0f;
       #define CROSS_CORRECTION_ANGLE 15.0f
       float correction_based_on_side = (avg_x < 40.0f) ? CROSS_CORRECTION_ANGLE : ((avg_x > 40.0f) ? - CROSS_CORRECTION_ANGLE : 0.0f); // nal3bou 3la el valeur 15???
@@ -560,22 +569,12 @@ void firasLogic(){
     steer(pendingSteeringAngle);
     lastSteeringAngle = pendingSteeringAngle;
   }
-  Serial.println("---------------------------------------------------------------");
-}
-
-
-void testingStopBox(){
-  // Stop distance need some tuning bech tji bel dhabt
-  #define STOP_DISTANCE 20
-  run(90, 90);
-  long distance = readDistanceFiltered();
-  Serial.printf("Distance: %ld\n", distance);
-  if(distance < STOP_DISTANCE){
-    run(0,0);
-    Serial.println("Object detected, stopping");
-    while(true);
+  //Serial.println("---------------------------------------------------------------");
+  if(finishLineDetected){
+    testingStopBox();
   }
 }
+
 
 void setup()
 {
@@ -619,7 +618,7 @@ void setup()
 
 void loop()
 {
-  //firasLogic();
+  firasLogic();
   //findMaxXandMaxY();
-  testingStopBox();
+  //testingStopBox();
 }
