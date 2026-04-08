@@ -439,7 +439,7 @@ void findMaxXandMaxY(){
 }
 
 
-void testingStopBox(){
+void stopBox(){
   // Stop distance need some tuning bech tji bel dhabt
   #define STOP_DISTANCE 30
   long distance = readDistanceFiltered();
@@ -469,7 +469,6 @@ void firasLogic(){
     int x1 = pixy.line.vectors[i].m_x1;
     int y1 = pixy.line.vectors[i].m_y1;
     float avgY = (y0 + y1) / 2.0f;
-    //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n, isHorizontal=%s\n", i, angle, length, x0, y0, x1, y1, isHorizontalAngle(angle) ? "true" : "false");
 
     // FINISH LINE DETECTION (need some tuning) First part
     if(isHorizontalAngle(angle) && length < 15.0f){
@@ -489,8 +488,8 @@ void firasLogic(){
       vectors[numVectors] = pixy.line.vectors[i];
       numVectors++;
     }
-    //Serial.printf("Vector %d: Angle=%.2f, Length=%.2f, x0=%d, y0=%d, x1=%d, y1=%d\n", i, angle, length, x0, y0, x1, y1);
   }
+
   // FINISH LINE DETECTION (need some tuning) Second part
   unsigned long elapsedTime = millis() - startTime;
   if(numHorizontalVectors >= 2 && !finishLineDetected && elapsedTime > 10000){
@@ -507,18 +506,15 @@ void firasLogic(){
 
   // Sort vectors by length in descending order
   sortVectorsByLength(vectors, numVectors);
-  //printSortedVectors(vectors, numVectors);
 
   float targetSteering = lastSteeringAngle;
 
   if (numVectors == 0)
   {
-    //Serial.println("No valid vectors, keeping previous steering angle");
     targetSteering = lastSteeringAngle;
   }
   else if (numVectors == 1)
   {
-    //Serial.println("Not enough vectors detected, using the best one"); 
     targetSteering = computeSteeringAngle(vectors, numVectors);
   }
   else if (numVectors >= 2)
@@ -527,16 +523,13 @@ void firasLogic(){
     float angle2 = computeAngle(vectors[1]);
     
     // kana fama angle 90 binet les deux vecteurs, bech nwaslou l goddam (most likely fama intersection)
-    //if ((abs(angle1 - angle2) > 70 && abs(angle1 - angle2) < 110) || (abs(angle1 - angle2) > 250 && abs(angle1 - angle2) < 290))
     float angleBetweenVectors = computeAngleBetweenVectors(vectors[0], vectors[1]);
-    //Serial.printf("=========================================\nAngle between top 2 vectors: %.2f\n", angleBetweenVectors);
     if ((abs(angleBetweenVectors) > 70 && abs(angleBetweenVectors) < 110))
     {
       float avg_x = (vectors[0].m_x0 + vectors[0].m_x1 + vectors[1].m_x0 + vectors[1].m_x1) / 4.0f;
       #define CROSS_CORRECTION_ANGLE 15.0f
       float correction_based_on_side = (avg_x < 40.0f) ? CROSS_CORRECTION_ANGLE : ((avg_x > 40.0f) ? - CROSS_CORRECTION_ANGLE : 0.0f); // nal3bou 3la el valeur 15???
       targetSteering = CENTRE_ANGLE + correction_based_on_side;
-      //Serial.printf("=========================================\nTwo main vectors with angles %.2f and %.2f, avg X: %.2f\n", angle1, angle2, avg_x);
     }
     // mafamch intersection
     else
@@ -554,26 +547,21 @@ void firasLogic(){
   {
     pendingSteeringAngle = targetSteering;
     steeringDelayCounter = STEERING_DELAY_CYCLES;
-    //Serial.printf("Queued new steering target %0.2f (delay %d)\n", pendingSteeringAngle, steeringDelayCounter);
   }
 
   // decrement the delay if we have any
-  if (steeringDelayCounter > 0)
-  {
-    steeringDelayCounter--;
-    //Serial.printf("Delaying steering response, %d cycles left\n", steeringDelayCounter);
-  }
+  if (steeringDelayCounter > 0){ steeringDelayCounter--; }
 
   // if the delay has elapsed and we have a pending steering angle different from the last applied one, apply it
   if (steeringDelayCounter == 0 && pendingSteeringAngle != lastSteeringAngle)
   {
-    //Serial.printf("Applying delayed steering %0.2f\n", pendingSteeringAngle);
     steer(pendingSteeringAngle);
     lastSteeringAngle = pendingSteeringAngle;
   }
-  //Serial.println("---------------------------------------------------------------");
+
+  // Finish line detected, check el box
   if(finishLineDetected){
-    testingStopBox();
+    stopBox();
   }
 }
 
@@ -621,6 +609,4 @@ void setup()
 void loop()
 {
   firasLogic();
-  //findMaxXandMaxY();
-  //testingStopBox();
 }
