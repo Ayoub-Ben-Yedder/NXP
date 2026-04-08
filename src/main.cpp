@@ -554,7 +554,7 @@ void firasLogic(){
     // if les Y mte3hom ykounou 9ribin mel baadhhom (within 5 pixels), n3etberou finish line detected, w nkamlo douga douga
     if(fabs(avgY_vec1 - avgY_vec2) <= 5.0f){
       Serial.println("Finish line detected!");
-      //run(130,130);
+      run(130,130);
       finishLineDetected = true;
     }
   }
@@ -583,17 +583,22 @@ void firasLogic(){
       float correction_based_on_side = (avg_x < 40.0f) ? CROSS_CORRECTION_ANGLE : ((avg_x > 40.0f) ? - CROSS_CORRECTION_ANGLE : 0.0f); // nal3bou 3la el valeur 15???
       targetSteering = CENTRE_ANGLE + correction_based_on_side;
       int caseIntersection = identifyCase(vectors[0], vectors[1]);
+      int caseCorrection = 10.0f;
       if(caseIntersection == TOP_LEFT_CORNER){
-        Serial.println("Case: TOP LEFT CORNER");
+        //Serial.println("Case: TOP LEFT CORNER");
+        targetSteering += caseCorrection;
       }
       else if(caseIntersection == TOP_RIGHT_CORNER){
-        Serial.println("Case: TOP RIGHT CORNER");
+        //Serial.println("Case: TOP RIGHT CORNER");
+        targetSteering -= caseCorrection;
       }
       else if(caseIntersection == BOTTOM_LEFT_CORNER){
-        Serial.println("Case: BOTTOM LEFT CORNER");
+        //Serial.println("Case: BOTTOM LEFT CORNER");
+        targetSteering += caseCorrection;
       }
       else if(caseIntersection == BOTTOM_RIGHT_CORNER){
-        Serial.println("Case: BOTTOM RIGHT CORNER");
+        //Serial.println("Case: BOTTOM RIGHT CORNER");
+        targetSteering -= caseCorrection;
       }
     }
     // mafamch intersection
@@ -668,8 +673,8 @@ void setup()
 
   digitalWrite(LED, HIGH);
 
-  //run(150, 150);
-  run(0, 0);
+  run(150, 150);
+  //run(0, 0);
   startTime = millis();
 }
 void loop()
