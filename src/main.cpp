@@ -3,9 +3,7 @@
 #include <Servo.h>
 #include <Wire.h>
 
-#define MAX_VECTORS 20
-#define MIN_VECTOR_LENGTH 10
-
+// pins definition
 #define PWM1 8
 #define IN1 6
 #define IN2 7
@@ -17,6 +15,11 @@
 #define ECHO 15
 #define TRIG 14
 #define SERVO_PIN 23
+
+// constants definition
+
+#define MAX_VECTORS 20
+#define MIN_VECTOR_LENGTH 10
 
 #define CENTRE_ANGLE 135
 #define MAX_RIGHT CENTRE_ANGLE + 45
@@ -127,7 +130,7 @@ void run(int speedLeft, int speedRight)
     digitalWrite(IN2, LOW);
   }
 }
-
+// compute the angle of a vector in degrees, where 0 is to the right and increases counterclockwise
 float computeAngle(const Vector &vec)
 {
   float res = atan2(vec.m_y1 - vec.m_y0, vec.m_x1 - vec.m_x0) * 180.0 / PI;
@@ -141,12 +144,12 @@ float computeAngle(const Vector &vec)
   }
   return res;
 }
-
+// compute the length of a vector
 float computeLength(const Vector &vec)
 {
   return sqrt(pow(vec.m_x1 - vec.m_x0, 2) + pow(vec.m_y1 - vec.m_y0, 2));
 }
-
+// normalize an angle to be within (0, 360)
 float normalizeAngle(float angle)
 {
   while (angle < 0.0)
@@ -170,7 +173,7 @@ float mapFloat(float x, float inMin, float inMax, float outMin, float outMax)
 {
   return (x - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
-
+// compute the smallest difference between two angles, result is in range (-180, 180)
 float angleDelta(float from, float to)
 {
   float delta = normalizeAngle(to) - normalizeAngle(from);
@@ -210,7 +213,7 @@ float computeSteeringAngle(const Vector *vectors, uint8_t numVectors)
   avgDelta = constrain(avgDelta, -45.0, 45.0);
   return mapFloat(avgDelta, -45.0, 45.0, MAX_LEFT, MAX_RIGHT);
 }
-
+// bias the steering angle slightly toward the center to help with recovery when we drift to the sides
 float biasSteeringTowardCenter(float steeringAngle)
 {
   if (steeringAngle > CENTRE_ANGLE)
@@ -223,7 +226,7 @@ float biasSteeringTowardCenter(float steeringAngle)
   }
   return steeringAngle;
 }
-
+// when the steering angle is beyond a certain threshold from the center, we start to soften it to avoid oversteering and oscillations
 float softenExtremeSteering(float steeringAngle)
 {
   float delta = steeringAngle - CENTRE_ANGLE;
@@ -306,7 +309,7 @@ void stopBox(){
     while(true);
   }
 }
-
+// Identify the type of intersection (corner) formed by two vectors, return 0 if no clear corner is identified, or one of the corner constants if identified
 int identifyCase(Vector v1, Vector v2) {
     struct Point { float x, y; };
 
@@ -357,7 +360,7 @@ int identifyCase(Vector v1, Vector v2) {
 
     return 0;
 }
-
+// compute the steering angle when we have an intersection (two vectors with a clear corner), we want to steer more aggressively into the corner to make sure we turn properly, and we also want to apply a correction based on which side of the frame the intersection is on to help with sharper turns
 int computeSteeringAngleIntersection(const Vector &v1, const Vector &v2)
 {
   float avg_x = (v1.m_x0 + v1.m_x1 + v2.m_x0 + v2.m_x1) / 4.0f;
@@ -477,10 +480,11 @@ void runNXP(){
 
 void setup()
 {
+  // Set PWM frequency to 20kHz for both channels
   analogWriteResolution(8);
   analogWriteFrequency(PWM1, 20000);
   analogWriteFrequency(PWM2, 20000);
-
+  // Initialize pins
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
   pinMode(LED, OUTPUT);
@@ -492,7 +496,7 @@ void setup()
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-
+  // Initialize servo to the center position
   steer_servo.attach(SERVO_PIN);
   steer(CENTRE_ANGLE);
 
@@ -501,6 +505,7 @@ void setup()
   digitalWrite(LED, HIGH);
 
   run(150, 150);
+  // Initialize the start time for finish line detection to avoid detecting it too early while we are still at the start
   startTime = millis();
 }
 
