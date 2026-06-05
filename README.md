@@ -47,6 +47,10 @@ The electronics are primarily a **Teensy 4.0 shield** custom designed with **KiC
 
 All design files are located in the `electronics/` directory.
 
+## Mechanical Design
+
+The mechanical design for this robot was adapted from the [NXP CUP FINALS](https://github.com/aminebensaid66/NXP-CUP-FINALS) repository. This includes the chassis, motor mounts, sensor brackets, and other structural components required for the robot assembly.
+
 ## Pin Configuration
 
 ```
