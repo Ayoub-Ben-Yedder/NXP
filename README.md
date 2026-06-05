@@ -126,6 +126,8 @@ pio device monitor
 
 ## Algorithm Flow
 
+![Algorithm Flowchart](electronics/images/flowchart_corrected.png)
+
 1. **Initialization**
    - Configure PWM frequencies (20 kHz)
    - Initialize pins and servo to center
