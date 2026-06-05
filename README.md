@@ -32,6 +32,21 @@ This project implements a sophisticated autonomous robot controller that:
 - **LED Indicator** - Pin 22
 - **Logic Level Converters** - For Pixy2 communication
 
+## Electronics & PCB Design
+
+The electronics are primarily a **Teensy 4.0 shield** custom designed with **KiCAD**. The shield integrates all necessary components (motor drivers, sensor interfaces, power distribution) onto a single PCB that stacks directly onto the Teensy 4.0 microcontroller, providing a clean and compact solution for the robot.
+
+### Schematics
+![PCB Schematic](electronics/images/pcb_sch.png)
+
+### PCB Layout
+![PCB Footprint](electronics/images/pcb_foot.png)
+
+### 3D View
+![PCB 3D View](electronics/images/pcb3d.png)
+
+All design files are located in the `electronics/` directory.
+
 ## Pin Configuration
 
 ```
